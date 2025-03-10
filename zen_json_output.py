@@ -2,18 +2,15 @@
 This module is used to output Zen results in JSON format.
 
 Usage:
-    python zen_json_output.py [GITHUB_USERNAME]
-    python zen_json_output.py [GITHUB_USERNAME] [--output OUTPUT_JSON_FILE_PATH]
-    python zen_json_output.py [GITHUB_USERNAME_URL]
-    python zen_json_output.py [GITHUB_USERNAME_URL] [--output OUTPUT_JSON_FILE_PATH]
-    python zen_json_output.py [GITHUB_REPOSITORY_URL]
-    python zen_json_output.py [GITHUB_REPOSITORY_URL] [--output OUTPUT_JSON_FILE_PATH]
-    python zen_json_output.py [GITHUB_ORGANIZATION_NAME] --org
-    python zen_json_output.py [GITHUB_ORGANIZATION_NAME] --org [--output OUTPUT_JSON_FILE_PATH]
+    python zen_json_output.py [GITHUB_USERNAME] [--token GITHUB_TOKEN] [--output OUTPUT_JSON_FILE_PATH]
+    python zen_json_output.py [GITHUB_USERNAME_URL] [--token GITHUB_TOKEN] [--output OUTPUT_JSON_FILE_PATH]
+    python zen_json_output.py [GITHUB_REPOSITORY_URL] [--token GITHUB_TOKEN] [--output OUTPUT_JSON_FILE_PATH]
+    python zen_json_output.py [GITHUB_ORGANIZATION_NAME] --org [--token GITHUB_TOKEN] [--output OUTPUT_JSON_FILE_PATH]
 """
 import argparse
 import datetime
 import json
+from math import e
 import pathlib
 import re
 import sys
@@ -21,26 +18,31 @@ from urllib import response
 from typing import Optional
 
 import requests
-from requests.auth import HTTPBasicAuth
 
 
-def find_contributors_from_repo(username: str, repo: str, your_username: Optional[str] = "") -> list[str]:
+def find_contributors_from_repo(username: str, repo: str, authorization_token: Optional[str] = None) -> list[str]:
     """
     Find contributors from a repository.
     
     Args:
         username (str): GitHub username
         repo (str): GitHub repository name
+        authorization_token (str, optional): GitHub token
     
     Returns:
-        list[str]: List of contributors
+        contributors (list[str]): List of contributors
     """
-    response = requests.get('https://api.github.com/repos/%s/%s/contributors?per_page=100' % (username, repo), auth=HTTPBasicAuth(your_username, '')).text
+    if authorization_token:
+        headers = {"Authorization": f"token {authorization_token}"}
+        response = requests.get('https://api.github.com/repos/%s/%s/contributors?per_page=100' % (username, repo), headers=headers).text
+    else:
+        response = requests.get('https://api.github.com/repos/%s/%s/contributors?per_page=100' % (username, repo)).text
+        
     contributors = re.findall(r'https://github\.com/(.*?)"', response)
     return contributors
 
 
-def find_repos_from_username(username: str, your_username: Optional[str] = "") -> list[str]:
+def find_repos_from_username(username: str, authorization_token: Optional[str] = None) -> list[str]:
     """
     Find repositories from a username.
     
@@ -50,7 +52,12 @@ def find_repos_from_username(username: str, your_username: Optional[str] = "") -
     Returns:
         list[str]: List of repositories
     """
-    response = requests.get('https://api.github.com/users/%s/repos?per_page=100&sort=pushed' % username, auth=HTTPBasicAuth(your_username, '')).text
+    if authorization_token:
+        headers = {"Authorization": f"token {authorization_token}"}
+        response = requests.get('https://api.github.com/users/%s/repos?per_page=100&sort=pushed' % username, headers=headers).text
+    else:
+        response = requests.get('https://api.github.com/users/%s/repos?per_page=100&sort=pushed' % username).text
+        
     repos = re.findall(r'"full_name":"%s/(.*?)",.*?"fork":(.*?),' % username, response)
     non_forked_repos = []
     for repo in repos:
@@ -59,7 +66,7 @@ def find_repos_from_username(username: str, your_username: Optional[str] = "") -
     return non_forked_repos
 
 
-def find_users_from_organization(organization: str, your_username: Optional[str] = "") -> list[str]:
+def find_users_from_organization(organization: str, authorization_token: Optional[str] = None) -> list[str]:
     """
     Find users from an organization.
     
@@ -69,12 +76,17 @@ def find_users_from_organization(organization: str, your_username: Optional[str]
     Returns:
         members (list[str]): List of users
     """
-    response = requests.get('https://api.github.com/orgs/%s/members?per_page=100' % organization, auth=HTTPBasicAuth(your_username, '')).text
+    if authorization_token:
+        headers = {"Authorization": f"token {authorization_token}"}
+        response = requests.get('https://api.github.com/orgs/%s/members?per_page=100' % organization, headers=headers).text
+    else:
+        response = requests.get('https://api.github.com/orgs/%s/members?per_page=100' % organization).text
+        
     members = re.findall(r'https://github\.com/(.*?)"', response)
     return members
 
 
-def find_email_from_contributor(username: str, repo: str, contributor: str, your_username: Optional[str] = "") -> dict[str, str]:
+def find_email_from_contributor(username: str, repo: str, contributor: str, authorization_token: Optional[str] = None) -> dict[str, str]:
     """
     Find email from a contributor.
     
@@ -86,9 +98,15 @@ def find_email_from_contributor(username: str, repo: str, contributor: str, your
     Returns:
         dict[str, str]: Email of the contributor
     """
+    if authorization_token:
+        headers = {"Authorization": f"token {authorization_token}"}
+    
     return_results: dict[str, str] = {}
     
-    response = requests.get('https://github.com/%s/%s/commits?author=%s' % (username, repo, contributor), auth=HTTPBasicAuth(your_username, '')).text
+    if authorization_token:
+        response = requests.get('https://github.com/%s/%s/commits?author=%s' % (username, repo, contributor), headers=headers).text
+    else:
+        response = requests.get('https://github.com/%s/%s/commits?author=%s' % (username, repo, contributor)).text
     
     latest_commit = re.search(r'href="/%s/%s/commit/(.*?)"' % (username, repo), response)
     if latest_commit:
@@ -96,7 +114,10 @@ def find_email_from_contributor(username: str, repo: str, contributor: str, your
     else:
         latest_commit = 'dummy'
     
-    commit_details = requests.get('https://github.com/%s/%s/commit/%s.patch' % (username, repo, latest_commit), auth=HTTPBasicAuth(your_username, '')).text
+    if authorization_token:
+        commit_details = requests.get('https://github.com/%s/%s/commit/%s.patch' % (username, repo, latest_commit), headers=headers).text
+    else:
+        commit_details = requests.get('https://github.com/%s/%s/commit/%s.patch' % (username, repo, latest_commit)).text
     
     email = re.search(r'<(.*)>', commit_details)
     if email:
@@ -113,7 +134,7 @@ def find_email_from_contributor(username: str, repo: str, contributor: str, your
     return return_results
 
 
-def find_email_from_username(username: str, your_username: Optional[str] = "") -> dict[str, str]:
+def find_email_from_username(username: str, authorization_token: Optional[str] = None) -> dict[str, str]:
     """
     Find email from a username.
     
@@ -123,15 +144,15 @@ def find_email_from_username(username: str, your_username: Optional[str] = "") -
     Returns:
         dict[str, str]: Email of the username
     """
-    repos = find_repos_from_username(username, your_username)
+    repos = find_repos_from_username(username, authorization_token)
     for repo in repos:
-        return_results = find_email_from_contributor(username, repo, username, your_username)
+        return_results = find_email_from_contributor(username, repo, username, authorization_token)
         if return_results:
             return return_results
     return {}
 
 
-def find_emails_from_repo(username: str, repo: str, your_username: Optional[str] = "") -> dict[str, str]:
+def find_emails_from_repo(username: str, repo: str, authorization_token: Optional[str] = None) -> dict[str, str]:
     """
     Find emails from a repository.
     
@@ -142,14 +163,14 @@ def find_emails_from_repo(username: str, repo: str, your_username: Optional[str]
     Returns:
         dict[str, str]: Emails of the contributors
     """
-    contributors = find_contributors_from_repo(username, repo, your_username)
+    contributors = find_contributors_from_repo(username, repo, authorization_token)
     return_results = {}
     for contributor in contributors:
-        return_results.update(find_email_from_contributor(username, repo, contributor, your_username))
+        return_results.update(find_email_from_contributor(username, repo, contributor, authorization_token))
     return return_results
 
 
-def find_emails_from_organization_usernames(usernames: list[str], your_username: Optional[str] = "") -> dict[str, str]:
+def find_emails_from_organization_usernames(usernames: list[str], authorization_token: Optional[str] = None) -> dict[str, str]:
     """
     Find emails from organization usernames.
     
@@ -161,7 +182,7 @@ def find_emails_from_organization_usernames(usernames: list[str], your_username:
     """
     return_results = {}
     for username in usernames:
-        return_results.update(find_email_from_username(username, your_username))
+        return_results.update(find_email_from_username(username, authorization_token))
     return return_results
     
 
@@ -169,12 +190,15 @@ def main():
     parser = argparse.ArgumentParser(description="Output Zen results in JSON format.")
     parser.add_argument("target", help="GITHUB_USERNAME, GITHUB_USERNAME_URL, GITHUB_REPOSITORY_URL, or GITHUB_ORGANIZATION_NAME")
     parser.add_argument("--output", help="Output JSON file path")
-    parser.add_argument("--your_username", help="GitHub your username")
+    parser.add_argument("--token", help="GitHub token")
     parser.add_argument("--org", help="Organization", action="store_true")
     args = parser.parse_args()
     target = args.target
     output = args.output
-    your_username = args.your_username or ""
+    if args.token:
+        authorization_token = args.token
+    else:
+        authorization_token = None
     is_target_organization = args.org
     
     # remove the trailing slash from the target string if it exists
@@ -204,12 +228,12 @@ def main():
     
     # find emails
     if target_organization:
-        usernames = find_users_from_organization(username, your_username)
-        json_result = find_emails_from_organization_usernames(usernames, your_username)
+        usernames = find_users_from_organization(username, authorization_token)
+        json_result = find_emails_from_organization_usernames(usernames, authorization_token)
     elif target_user:
-        json_result = find_email_from_username(username, your_username)
+        json_result = find_email_from_username(username, authorization_token)
     elif target_repo:
-        json_result = find_emails_from_repo(username, repo, your_username)
+        json_result = find_emails_from_repo(username, repo, authorization_token)
     
     # Output the result
     if output:
