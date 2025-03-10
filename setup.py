@@ -16,4 +16,8 @@ setup(
             "zen-json = zen_json_output:main",
         ],
     },
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Operating System :: Linux",
+    ],
 )
